@@ -83,6 +83,19 @@ python3 tools/load_py.py \
 
 ---
 
+## Automated Run: one_run_staged.py
+
+For a **fully automated staged run** (monitor + staged loader + per-stage & comparison plots):
+
+```bash
+python3 tools/one_run_staged.py \
+  --baseUrl http://localhost:8080 \
+  --stageFile tools/day_profile.json \
+  --title "JITLab Staged Run"
+```
+
+---
+
 ## Plotting
 ```bash
 # Plot per-second load CSV (and optionally overlay monitor.csv if available)

@@ -76,6 +76,8 @@ def main():
 
     load = pd.read_csv(args.load)
     mon = pd.read_csv(args.monitor)
+    base_outdir = f"runs/"
+
 
     # Align times (optional)
     t0 = min(load["ts"].min(), mon["ts"].min())
@@ -85,9 +87,11 @@ def main():
     stages = load["stage"].unique()
     for stage in stages:
         l = load[load["stage"] == stage]
-        plot_stage(l, mon, stage, args.title, outdir=stage)
+        stage_outdir = os.path.join(base_outdir, stage)
+        os.makedirs(stage_outdir, exist_ok=True)
+        plot_stage(l, mon, stage, args.title, stage_outdir)
 
-    plot_compare(load, mon, stages, args.title, outdir="compare")
+    plot_compare(load, mon, stages, args.title, os.path.join(base_outdir, "compare"))
 
     print("Saved: per-stage plots in each stage folder, and comparison plots in compare/")
 
