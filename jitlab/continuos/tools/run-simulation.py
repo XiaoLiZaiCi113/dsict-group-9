@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 import argparse, json, math, random, string, time, os
+import asyncio
+import httpx
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Tuple
@@ -131,6 +133,51 @@ def call_files(base_url: str, fileTask: Dict) -> Tuple[bool, float, int]:
     return ok, dt, bytes_streamed
 
 
+async def async_call_cpu(client, base_url, cpuTask):
+    body = {
+        "iterations": cpuTask.get("iterations", 1000),
+        "payloadSize": cpuTask.get("payloadBytes", cpuTask.get("payloadSize", 10000))
+    }
+    t0 = time.perf_counter()
+    try:
+        r = await client.post(f"{base_url}/work/cpu", json=body, timeout=60)
+        await r.aread()
+        ok = (200 <= r.status_code < 300)
+    except Exception:
+        ok = False
+    dt = (time.perf_counter() - t0) * 1000.0
+    return ok, dt, int(body["payloadSize"])
+
+async def async_call_files(client, base_url, fileTask):
+    if not fileTask.get("enabled", False):
+        return True, 0.0, 0
+    body = {
+        "fileCount": fileTask.get("files", fileTask.get("fileCount", 5)),
+        "fileSizeBytes": fileTask.get("fileSizeBytes", 131072),
+        "prefix": fileTask.get("prefix", "blob")
+    }
+    t0 = time.perf_counter()
+    bytes_streamed = 0
+    ok = False
+    try:
+        async with client.stream("POST", f"{base_url}/work/files", json=body, timeout=180) as r:
+            ok = (200 <= r.status_code < 300)
+            hdr_cnt = r.headers.get("X-Files-Count")
+            hdr_sz  = r.headers.get("X-File-Size-Bytes")
+            if hdr_cnt is not None and hdr_sz is not None:
+                try:
+                    bytes_streamed = int(hdr_cnt) * int(hdr_sz)
+                except ValueError:
+                    bytes_streamed = 0
+            async for chunk in r.aiter_bytes():
+                if chunk:
+                    if hdr_cnt is None or hdr_sz is None:
+                        bytes_streamed += len(chunk)
+    except Exception:
+        ok = False
+    dt = (time.perf_counter() - t0) * 1000.0
+    return ok, dt, bytes_streamed
+
 def lerp(a: float, b: float, t: float) -> float:
     return a + (b - a) * max(0.0, min(1.0, t))
 
@@ -222,6 +269,99 @@ def run_sim(phases: List[Dict], base_url: str, total_sim_minutes: float, seed: i
             now = time.perf_counter()
             if now >= t_end: break
             time.sleep(min(0.005, t_end - now))
+
+    df = pd.DataFrame(rows)
+    return df
+
+async def run_sim_async(phases: List[Dict], base_url: str, total_sim_minutes: float, seed: int, default_concurrency: int) -> pd.DataFrame:
+    random.seed(seed)
+    sched = build_schedule(phases, total_sim_minutes)
+    total_seconds = int(round(total_sim_minutes * 60))
+    start_wall = datetime.now()
+    rows = []
+
+    async with httpx.AsyncClient(http2=False) as client:
+        for s in range(total_seconds):
+            sim_minute = s / 60.0
+            cur = None
+            for p in sched:
+                if p["sim_start_minute"] <= sim_minute < p["sim_end_minute"] or \
+                   (p["sim_end_minute"] == sched[-1]["sim_end_minute"] and sim_minute >= p["sim_start_minute"]):
+                    cur = p; break
+            if cur is None:
+                await asyncio.sleep(1.0)
+                continue
+
+            span = max(cur["sim_duration_minute"], 1e-9)
+            t_phase = (sim_minute - cur["sim_start_minute"]) / span
+            rps_min = cur["targetRPS"]["min"]
+            rps_max = cur["targetRPS"]["max"]
+            target_rps = lerp(rps_min, rps_max, t_phase)
+            req_this_second = max(0, int(round(target_rps + random.random() - 0.5)))
+
+            mix_cpu = cur["mix"]["cpu"]
+            cpuTask = cur.get("cpuTask", {})
+            fileTask = cur.get("fileTask", {})
+
+            # Prepare endpoints for this second
+            endpoints = ["cpu" if random.random() < mix_cpu else "files" for _ in range(req_this_second)]
+
+            # --- Async worker pattern ---
+            phase_conc = cur.get("concurrency", default_concurrency)
+            # print(f"[run-simulation] Using concurrency for phase '{cur['phase']}': {phase_conc}")
+            sem = asyncio.Semaphore(phase_conc)
+            async def one(ep):
+                async with sem:
+                    if ep == "cpu":
+                        return await async_call_cpu(client, base_url, cpuTask) + ("cpu",)
+                    else:
+                        return await async_call_files(client, base_url, fileTask) + ("file",)
+
+            tasks = [one(ep) for ep in endpoints]
+            t0 = time.perf_counter()
+            results = await asyncio.gather(*tasks) if tasks else []
+            dt = time.perf_counter() - t0
+
+            succ = 0
+            err = 0
+            latencies = []
+            sent_cpu = 0
+            sent_file = 0
+            bytes_out = 0
+
+            for ok, ms, bytes_val, ep in results:
+                latencies.append(ms)
+                if ep == "cpu":
+                    sent_cpu += 1
+                    bytes_out += bytes_val
+                else:
+                    sent_file += 1
+                    bytes_out += bytes_val
+                succ += 1 if ok else 0
+                err  += 0 if ok else 1
+
+            rows.append({
+                "sim_second": s,
+                "sim_minute": sim_minute,
+                "phase": cur["phase"],
+                "phase_progress": t_phase,
+                "target_rps": target_rps,
+                "sent_total": req_this_second,
+                "sent_cpu": sent_cpu,
+                "sent_file": sent_file,
+                "succ": succ,
+                "err": err,
+                "avg_latency_ms": (sum(latencies)/len(latencies)) if latencies else 0.0,
+                "bytes": bytes_out,
+                "wall_time": start_wall + timedelta(seconds=s)
+            })
+
+            # Keep pacing to 1 second per loop
+            t_end = time.perf_counter() + 1.0
+            while True:
+                now = time.perf_counter()
+                if now >= t_end: break
+                await asyncio.sleep(min(0.005, t_end - now))
 
     df = pd.DataFrame(rows)
     return df
@@ -357,7 +497,7 @@ def main():
             if k not in p:
                 raise ValueError(f"Phase missing key: {k} → {p}")
 
-    df = run_sim(phases, args.base_url.rstrip("/"), args.total_sim_minutes, args.seed)
+    df = asyncio.run(run_sim_async(phases, args.base_url.rstrip("/"), args.total_sim_minutes, args.seed, 1))
     make_plots(df, Path(args.out))
 
 if __name__ == "__main__":

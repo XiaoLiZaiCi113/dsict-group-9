@@ -4,6 +4,7 @@
     "start": "06:00",
     "end": "10:30",
     "targetRPS": {"min": 0.5, "max": 2},
+    "concurrency": 40,
     "mix": {"cpu": 1.0, "file": 0.0},
     "cpuTask": { "iterations": 1200, "payloadBytes": 15000 },
     "fileTask": { "enabled": false, "files": 2, "fileSizeBytes": 131072 }
@@ -13,6 +14,7 @@
     "start": "10:30",
     "end": "13:30",
     "targetRPS": {"min": 5, "max": 12},
+    "concurrency": 80,
     "mix": {"cpu": 0.75, "file": 0.25},
     "cpuTask": { "iterations": 1200, "payloadBytes": 15000 },
     "fileTask": { "enabled": true, "files": 10, "fileSizeBytes": 262144 }
@@ -22,6 +24,7 @@
     "start": "13:30",
     "end": "17:30",
     "targetRPS": {"min": 3, "max": 5},
+    "concurrency": 40,
     "mix": {"cpu": 0.9, "file": 0.10},
     "cpuTask": { "iterations": 1000, "payloadBytes": 10000 },
     "fileTask": { "enabled": true, "files": 8, "fileSizeBytes": 204800 }
@@ -31,6 +34,7 @@
     "start": "17:30",
     "end": "20:30",
     "targetRPS": {"min": 5, "max": 15},
+    "concurrency": 80,
     "mix": {"cpu": 0.65, "file": 0.35},
     "cpuTask": { "iterations": 1200, "payloadBytes": 15000 },
     "fileTask": { "enabled": true, "files": 12, "fileSizeBytes": 393216 }
@@ -40,6 +44,7 @@
     "start": "20:30",
     "end": "24:00",
     "targetRPS": {"min": 2, "max": 4},
+    "concurrency": 40,
     "mix": {"cpu": 0.90, "file": 0.10},
     "cpuTask": { "iterations": 1000, "payloadBytes": 10000 },
     "fileTask": { "enabled": true, "files": 5, "fileSizeBytes": 131072 }
@@ -49,6 +54,7 @@
     "start": "00:00",
     "end": "06:00",
     "targetRPS": {"min": 0, "max": 1},
+    "concurrency": 20,
     "mix": {"cpu": 1.0, "file": 0.0},
     "cpuTask": { "iterations": 500, "payloadBytes": 5000 },
     "fileTask": { "enabled": false }
