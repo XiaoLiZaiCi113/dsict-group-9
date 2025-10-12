@@ -294,9 +294,11 @@ async def run_sim_async(phases: List[Dict], base_url: str, total_sim_minutes: fl
 
             span = max(cur["sim_duration_minute"], 1e-9)
             t_phase = (sim_minute - cur["sim_start_minute"]) / span
+            phase_conc = cur.get("concurrency", default_concurrency)
             rps_min = cur["targetRPS"]["min"]
             rps_max = cur["targetRPS"]["max"]
-            target_rps = lerp(rps_min, rps_max, t_phase)
+            r_u = lerp(rps_min, rps_max, t_phase)
+            target_rps = phase_conc * r_u
             req_this_second = max(0, int(round(target_rps + random.random() - 0.5)))
 
             mix_cpu = cur["mix"]["cpu"]
@@ -307,8 +309,6 @@ async def run_sim_async(phases: List[Dict], base_url: str, total_sim_minutes: fl
             endpoints = ["cpu" if random.random() < mix_cpu else "files" for _ in range(req_this_second)]
 
             # --- Async worker pattern ---
-            phase_conc = cur.get("concurrency", default_concurrency)
-            # print(f"[run-simulation] Using concurrency for phase '{cur['phase']}': {phase_conc}")
             sem = asyncio.Semaphore(phase_conc)
             async def one(ep):
                 async with sem:

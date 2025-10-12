@@ -108,7 +108,7 @@ def main():
                     try:
                         with open(energy_path, "r") as ef:
                             e = int(ef.read().strip())  # microjoules
-                            print(e)
+                            # print(e)
                         if last_e is not None:
                             dt = max(1e-6, now - last_t)
                             de_uj = e - last_e if e >= last_e else (1 << 64) + e - last_e
