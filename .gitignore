@@ -1,4 +1,3 @@
 .venv/
 jitlab/.venv/
 .idea
-jitlab/continuos/sim_runs
