@@ -3,7 +3,15 @@
 This project is a lightweight Spring Boot server designed to be stressed by a client benchmark in order to study JVM just-in-time (JIT) optimizations and their impact on performance and energy efficiency. The server exposes simple endpoints that perform controlled workloads, while a companion **Bench client** can repeatedly poll these endpoints under configurable load. Together, they provide a reproducible environment for experimenting with JVM flags, system design choices, and runtime metrics to answer questions about efficiency and architecture-aware optimization.
 
 ## How to run 
-
+After starting up the server, use the python script to generate the load and monitor energy usage:
+```
+cd continuos/
+python3 tools/one_run.py   --base-url http://localhost:8080 --sim-minutes 24
+```
+Results plots will be saved in a folder with time stamp in 
+```
+dsict-group-9/jitlab/continuos/sim_runs
+```
 ### Requirements 
 Java 21 (OpenJDK)
 ``` 
